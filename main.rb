@@ -5,7 +5,8 @@ class ValueTable < String
     term = self.gsub /\s/, ""
     replacements = { /\-([\d\.x]+\^)/ => '-1*\1', /^\-\(/ => "m1*(",
        /^\-/ => "m", /([+\-\*\/\(])(\-)([\dx])/ => '\1m\3',
-       /([+\-\*\/\(])(\-\()/ => '\1m1*(', /([\d\.]+)x/ => '(\1*x)' }
+       /([+\-\*\/\(])(\-\()/ => '\1m1*(',
+       /([\d\.]+)(x)(\^[^\(\)+\-\*\/]+|\^\([^\)]+\))?/ => '(\1*\2\3)' }
     replacements.each { |pattern, replacement| term.gsub!(pattern, replacement) }
     term.scan(Regexp.union(/m?[\d\.x]+/, /[\(\)+\-\*\/\^]/)).each { |match| tokens << (match.gsub /m/, "-") }
     tokens
@@ -17,19 +18,26 @@ class ValueTable < String
         output << item
       else
         if output.length > 1
+          if output[-2].class != Complex
+            output[-2] = output[-2].to_f
+          end 
           if item == "/" && output[-1] == 0
             output[-2] = 0
           elsif item == "^"
-            output[-2] = output[-2].to_f ** output[-1]
+            output[-2] = output[-2] ** output[-1]
           else
-            output[-2] = output[-2].to_f.send item, output[-1]
+            output[-2] = output[-2].send item, output[-1]
           end
           output.pop
         end
       end
     end
     result = output.empty? ? 0 : output[0]
-    result = result.to_i if result.to_i == result.to_f
+    if result.to_s.match /[ie]/
+      result = result.to_s
+    else
+      result = result.to_i if result.to_i == result.to_f
+    end
     result
   end
   def display_table src
@@ -37,11 +45,20 @@ class ValueTable < String
     puts (" " * 19) + ("-" * 21)
     src.each do |key, value|
       k = sprintf("%28g", key)
-      v = sprintf("%g", value)
+      v = value.to_s
+      v = sprintf("%g", value) if value.class != String
       puts k + " | " + v
     end
   end
   public
+  def term
+    tokens = tokenize
+    s = ""
+    tokens.each do |token|
+      s += (token.length > 1) ? token : token.gsub(/([+\-\*\/])/, ' \1 ')
+    end
+    self + " = " + s
+  end
   def shunting_yard
     def precedence x, y = nil
       collection = {
@@ -114,14 +131,17 @@ ARGV.each do |argument|
 end
 
 # Example
-# term = "4x^3 / (x^2 - 1)"
+# term = "2^10 * (-2x^(1/ 2) / (x^(1 / 4) - 2^(1 / 2)))^2"
 
 if term == ""
   term = gets
 end
 
+puts ""
+
 value_table = ValueTable.new term
 
+# puts value_table.term
 # puts value_table.shunting_yard.join(" ")
 value_table.make_table
 # same as
